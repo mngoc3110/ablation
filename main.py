@@ -78,7 +78,7 @@ optim_group.add_argument('--lr-prompt-learner', type=float, default=1e-5, help='
 optim_group.add_argument('--lr-adapter', type=float, default=1e-5, help='Learning rate for the adapter.')
 optim_group.add_argument('--weight-decay', type=float, default=0.0001, help='Weight decay for the optimizer.')
 optim_group.add_argument('--momentum', type=float, default=0.9, help='Momentum for the SGD optimizer.')
-optim_group.add_argument('--milestones', nargs=\'+\', type=int, default=[20, 35], help='Epochs at which to decay the learning rate.')
+optim_group.add_argument('--milestones', nargs='+', type=int, default=[20, 35], help='Epochs at which to decay the learning rate.')
 optim_group.add_argument('--gamma', type=float, default=0.1, help='Factor for learning rate decay.')
 
 # --- Loss & Imbalance Handling ---
