@@ -264,7 +264,7 @@ def run_training(args: argparse.Namespace) -> None:
     if args.resume:
         if os.path.isfile(args.resume):
             print(f"==> Loading checkpoint '{args.resume}'")
-            checkpoint = torch.load(args.resume, map_location=args.device)
+            checkpoint = torch.load(args.resume, map_location=args.device, weights_only=False)
             start_epoch = checkpoint['epoch']
             best_val_uar = checkpoint.get('best_acc', 0.0)
             
