@@ -1,12 +1,11 @@
 #!/bin/bash
-# Exp 2b: No Auxiliary Losses (MI & DC)
-
 cd ..
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# không có mi và dc
+!export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-python main.py \
+!python main.py \
   --mode train \
-  --exper-name ablation_no_aux_loss \
+  --exper-name A100_AttnPool_LDL_MoCo4096_BS16_LR2e5 \
   --gpu 0 \
   --epochs 20 \
   --batch-size 4 \
@@ -40,7 +39,11 @@ python main.py \
   --class-specific-contexts True \
   --load_and_tune_prompt_learner True \
   --lambda_dc 0.0 \
+  --dc-warmup 5 \
+  --dc-ramp 10 \
   --lambda_mi 0.0 \
+  --mi-warmup 5 \
+  --mi-ramp 10 \
   --slerp-weight 0.0 \
   --temperature 0.07 \
   --use-ldl \
@@ -49,11 +52,8 @@ python main.py \
   --moco-k 4096 \
   --moco-m 0.99 \
   --lambda_moco 0.0 \
-  --moco-warmup 5 \
-  --moco-ramp 10 \
   --use-amp \
   --use-weighted-sampler \
   --crop-body \
   --grad-clip 1.0 \
   --mixup-alpha 0.2
-  # CHANGED: lambda_dc and lambda_mi to 0.0

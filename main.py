@@ -42,6 +42,8 @@ exp_group.add_argument('--mode', type=str, default='train', choices=['train', 'e
                        help="Execution mode: 'train' for a full training run, 'eval' for evaluation only.")
 exp_group.add_argument('--eval-checkpoint', type=str,
                        help="Path to the model checkpoint for evaluation mode (e.g., outputs/exp_name/model_best.pth).")
+exp_group.add_argument('--resume', type=str, default='',
+                       help="Path to the checkpoint to resume training from (e.g., outputs/exp_name/model.pth).")
 exp_group.add_argument('--exper-name', type=str, default='test', help='A name for the experiment to create a unique output folder.')
 exp_group.add_argument('--dataset', type=str, default='RAER', help='Name of the dataset to use.')
 exp_group.add_argument('--gpu', type=str, default='0', help='ID of the GPU to use (e.g., 0, 1) or "mps" for Apple Silicon.')
@@ -76,7 +78,7 @@ optim_group.add_argument('--lr-prompt-learner', type=float, default=1e-5, help='
 optim_group.add_argument('--lr-adapter', type=float, default=1e-5, help='Learning rate for the adapter.')
 optim_group.add_argument('--weight-decay', type=float, default=0.0001, help='Weight decay for the optimizer.')
 optim_group.add_argument('--momentum', type=float, default=0.9, help='Momentum for the SGD optimizer.')
-optim_group.add_argument('--milestones', nargs='+', type=int, default=[20, 35], help='Epochs at which to decay the learning rate.')
+optim_group.add_argument('--milestones', nargs=\'+\', type=int, default=[20, 35], help='Epochs at which to decay the learning rate.')
 optim_group.add_argument('--gamma', type=float, default=0.1, help='Factor for learning rate decay.')
 
 # --- Loss & Imbalance Handling ---
@@ -154,6 +156,15 @@ def setup_paths_and_logging(args: argparse.Namespace) -> argparse.Namespace:
     time_str = now.strftime("-[%m-%d]-[%H:%M]")
     
     args.name = args.exper_name + time_str
+    
+    if args.resume:
+        if os.path.isfile(args.resume):
+            # If resuming, we might want to keep the same output folder or create a new one.
+            # Here we create a new one but print that we are resuming.
+            print(f"==> Resuming from checkpoint: {args.resume}")
+        else:
+            print(f"==> No checkpoint found at '{args.resume}'. Starting from scratch.")
+            args.resume = ''
         
     args.output_path = os.path.join("outputs", args.name)
 
@@ -204,7 +215,7 @@ def run_training(args: argparse.Namespace) -> None:
     class_counts = get_class_counts(args.train_annotation)
     
     if args.use_ldl:
-        print(f"=> Using SemanticLDLLoss (LDL) with temperature {args.ldl_temperature}")
+        print(f"==> Using SemanticLDLLoss (LDL) with temperature {args.ldl_temperature}")
         criterion = SemanticLDLLoss(temperature=args.ldl_temperature).to(args.device)
     elif args.label_smoothing > 0:
         criterion = LSR2(e=args.label_smoothing, label_mode='class_descriptor').to(args.device)
@@ -220,7 +231,7 @@ def run_training(args: argparse.Namespace) -> None:
     
     moco_criterion = None
     if args.use_moco:
-        print(f"=> Using MoCoRankLoss with temperature {args.moco_t}")
+        print(f"==> Using MoCoRankLoss with temperature {args.moco_t}")
         moco_criterion = MoCoRankLoss(temperature=args.moco_t).to(args.device)
 
     class_priors = None
@@ -248,6 +259,40 @@ def run_training(args: argparse.Namespace) -> None:
         raise ValueError(f"Optimizer {args.optimizer} not supported.")
 
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=args.gamma)
+
+    # Resume from checkpoint
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print(f"==> Loading checkpoint '{args.resume}'")
+            checkpoint = torch.load(args.resume, map_location=args.device)
+            start_epoch = checkpoint['epoch']
+            best_val_uar = checkpoint.get('best_acc', 0.0)
+            
+            # Load model state dict
+            state_dict = checkpoint['state_dict']
+            # Fix potential DataParallel key mismatch
+            new_state_dict = {}
+            for k, v in state_dict.items():
+                if k.startswith('module.'):
+                    new_state_dict[k[7:]] = v
+                else:
+                    new_state_dict[k] = v
+            model.load_state_dict(new_state_dict)
+            
+            # Load optimizer state
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            
+            # Load recorder
+            if 'recorder' in checkpoint:
+                recorder = checkpoint['recorder']
+            
+            print(f"==> Loaded checkpoint '{args.resume}' (epoch {checkpoint['epoch']})")
+            
+            # Fast forward scheduler
+            scheduler.last_epoch = start_epoch - 1
+        else:
+            print(f"==> No checkpoint found at '{args.resume}'")
+
     trainer = Trainer(model, criterion, optimizer, scheduler, args.device, log_txt_path, 
                     mi_criterion=mi_criterion, lambda_mi=args.lambda_mi,
                     dc_criterion=dc_criterion, lambda_dc=args.lambda_dc,
